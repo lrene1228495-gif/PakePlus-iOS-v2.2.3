@@ -1,88 +1,896 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <link rel="stylesheet" href="./static/css/styles.css" />
-        <meta
-            http-equiv="Content-Security-Policy"
-            content="default-src * 'unsafe-inline' 'unsafe-eval'"
-        />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Tauri App</title>
-        <script src="./static/js/main.js"></script>
-    </head>
-    <body>
-        <main class="container">
-            <h1>Welcome to TauriMan</h1>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Eco Scan Monster</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
 
-            <div class="row">
-                <a
-                    href="https://tauri.app"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                >
-                    <img
-                        src="./assets/tauri.svg"
-                        class="logo tauri"
-                        alt="Tauri logo"
-                    />
-                </a>
-                <a
-                    href="https://pakeplus.com/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                >
-                    <img
-                        src="https://hk.gh-proxy.org/https://github.com/Sjj1024/PakePlus/blob/main/app-icon.png"
-                        class="logo vanilla"
-                        alt="JavaScript logo"
-                    />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #ecfdf5; 
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        #app-container {
+            width: 100%;
+            max-width: 414px;
+            height: 100vh;
+            max-height: 896px;
+            background-color: #f8fafc;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+
+        @media (min-width: 420px) {
+            #app-container {
+                height: 90vh;
+                border-radius: 40px;
+                border: 8px solid #1f2937;
+            }
+        }
+
+        .screen {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 100px;
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .screen.active { display: block; }
+        .screen::-webkit-scrollbar { display: none; }
+        .screen { -ms-overflow-style: none; scrollbar-width: none; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Nav & Action Menu */
+        .nav-btn { transition: all 0.2s; }
+        .nav-btn.active { color: #059669; }
+        
+        #scan-modal {
+            transition: opacity 0.3s, visibility 0.3s;
+            opacity: 0;
+            visibility: hidden;
+        }
+        #scan-modal.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        #scan-modal-content {
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #scan-modal.active #scan-modal-content {
+            transform: translateY(0);
+        }
+
+        /* --- MONSTER ANIMATIONS --- */
+        .monster-container {
+            animation: float 4s ease-in-out infinite;
+            transform-origin: center bottom;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(-2deg); }
+            50% { transform: translateY(-15px) rotate(2deg); }
+        }
+
+        .eye {
+            transform-origin: center;
+            animation: blink 4s infinite;
+        }
+
+        @keyframes blink {
+            0%, 46%, 48%, 100% { transform: scaleY(1); }
+            47% { transform: scaleY(0.1); }
+        }
+
+        /* Emotion States */
+        .state-feeding .mouth { d: path("M 40 55 Q 50 70 60 55 Z"); fill: #ef4444; }
+        .state-feeding .eye { animation: none; d: path("M30 45 Q35 35 40 45 M60 45 Q65 35 70 45"); stroke: #1f2937; stroke-width: 3; fill: none; }
+        
+        .state-crying .mouth { d: path("M 40 60 Q 50 50 60 60"); fill: none; }
+        .state-crying .eye { animation: none; d: path("M30 40 L40 50 M30 50 L40 40 M60 40 L70 50 M60 50 L70 40"); stroke: #1f2937; stroke-width: 3; fill: none; }
+        
+        .tear { opacity: 0; }
+        .state-crying .tear {
+            animation: cryDrop 1s infinite;
+        }
+        .state-crying .tear:nth-child(2) { animation-delay: 0.5s; }
+
+        @keyframes cryDrop {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(20px) scale(0); opacity: 0; }
+        }
+
+        .scan-line {
+            width: 100%;
+            height: 4px;
+            background: #10b981;
+            position: absolute;
+            top: 0;
+            left: 0;
+            box-shadow: 0 0 15px #10b981;
+            animation: scan 2s infinite linear;
+        }
+        @keyframes scan { 0% { top: 0%; } 50% { top: 100%; } 100% { top: 0%; } }
+
+        /* --- FEEDING EFFECTS --- */
+        @keyframes feedDrop {
+            0% { top: -80px; opacity: 0; transform: translateX(-50%) scale(0.5) rotate(-20deg); }
+            30% { opacity: 1; transform: translateX(-50%) scale(1.2) rotate(10deg); }
+            80% { top: 40px; transform: translateX(-50%) scale(0.8) rotate(0deg); opacity: 1; }
+            100% { top: 55px; transform: translateX(-50%) scale(0); opacity: 0; }
+        }
+
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            animation: explode 1s ease-out forwards;
+        }
+        @keyframes explode {
+            0% { transform: translate(0, 0) scale(1); opacity: 1; }
+            100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    
+    <!-- === HOME SCREEN (PET VIEW) === -->
+    <div id="screen-home" class="screen active relative bg-sky-100">
+        
+        <!-- === FOREST BACKGROUND === -->
+        <div class="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+            <!-- Sun -->
+            <div class="absolute top-12 right-10 w-20 h-20 bg-yellow-200 rounded-full blur-md opacity-90 shadow-[0_0_50px_rgba(253,224,71,0.8)]"></div>
+            <!-- Far Background Trees -->
+            <svg class="absolute bottom-[20%] w-full h-[40%] text-emerald-900 opacity-20" preserveAspectRatio="none" viewBox="0 0 100 100">
+                <path d="M0,100 L10,20 L25,100 L40,30 L55,100 L75,10 L90,100 L100,40 L100,100 Z" fill="currentColor"/>
+            </svg>
+            <!-- Midground Trees -->
+            <svg class="absolute bottom-[10%] w-full h-[35%] text-emerald-800 opacity-40" preserveAspectRatio="none" viewBox="0 0 100 100">
+                <path d="M-10,100 L15,30 L35,100 L55,20 L75,100 L95,40 L110,100 Z" fill="currentColor"/>
+            </svg>
+            <!-- Foreground Grass/Hill -->
+            <div class="absolute bottom-0 w-full h-[25%] bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-[50%] scale-x-150"></div>
+        </div>
+
+        <!-- Top HUD -->
+        <div class="p-6 pt-10 pb-2 flex justify-between items-start z-10 relative">
+            <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                    <h1 id="ui-monster-name" class="text-2xl font-black text-green-900 drop-shadow-md cursor-pointer" onclick="editName()">EcoBuddy</h1>
+                    <svg class="w-4 h-4 text-green-700 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                </div>
+                <div class="bg-white/90 backdrop-blur rounded-full px-3 py-1.5 inline-flex items-center gap-2 shadow-md border border-green-200">
+                    <span class="bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">LV <span id="ui-level">1</span></span>
+                    <div class="w-24 h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div id="ui-xp-bar" class="h-full bg-gradient-to-r from-emerald-400 to-green-600 transition-all duration-500 w-0"></div>
+                    </div>
+                    <span class="text-[10px] font-bold text-gray-600"><span id="ui-xp-current">0</span>/<span id="ui-xp-req">10</span> XP</span>
+                </div>
+            </div>
+            <button onclick="showScreen('premium')" class="bg-gradient-to-r from-yellow-300 to-yellow-500 text-yellow-900 p-2 px-3 rounded-full shadow-xl flex items-center gap-1 text-xs font-black uppercase tracking-wider transform hover:scale-105 transition-transform border border-yellow-200 z-10">
+                PRO
+            </button>
+        </div>
+
+        <!-- System Status -->
+        <div class="px-6 flex justify-center z-10 relative">
+            <div id="ai-status" class="bg-black/70 backdrop-blur-md text-white px-3 py-1.5 rounded-full text-[10px] font-bold tracking-wider flex items-center gap-2 shadow-lg">
+                <svg class="w-3 h-3 text-yellow-400 animate-spin ai-loading" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                <span class="ai-text text-yellow-300">Loading Local AI...</span>
+            </div>
+        </div>
+
+        <!-- The Monster -->
+        <div class="relative w-full h-[55%] flex justify-center items-center mt-4 z-10">
+            <!-- Background Aura -->
+            <div class="absolute w-64 h-64 bg-green-200/30 rounded-full blur-3xl"></div>
+            
+            <div id="monster-wrapper" class="monster-container w-64 h-64 relative cursor-pointer" onclick="pokeMonster()">
+                
+                <!-- SVG Monster Base -->
+                <svg id="monster-svg" viewBox="0 0 100 100" class="w-full h-full drop-shadow-2xl z-10 relative">
+                    <!-- Legs -->
+                    <path d="M 35 75 Q 35 85 30 85 Q 25 85 25 75 Z" fill="#34d399" />
+                    <path d="M 65 75 Q 65 85 70 85 Q 75 85 75 75 Z" fill="#34d399" />
+                    <!-- Body -->
+                    <path d="M 20 50 Q 20 20 50 20 Q 80 20 80 50 Q 80 80 50 80 Q 20 80 20 50 Z" fill="#6ee7b7" stroke="#10b981" stroke-width="2" />
+                    <!-- Leaf Antenna -->
+                    <path d="M 50 20 Q 55 5 70 10 Q 60 20 50 20" fill="#10b981" stroke="#047857" stroke-width="1" />
+                    <!-- Eyes (Default) -->
+                    <path class="eye" d="M 35 45 A 5 5 0 1 1 35.1 45" stroke="#064e3b" stroke-width="6" stroke-linecap="round" fill="none" />
+                    <path class="eye" d="M 65 45 A 5 5 0 1 1 65.1 45" stroke="#064e3b" stroke-width="6" stroke-linecap="round" fill="none" />
+                    <!-- Blush -->
+                    <ellipse cx="25" cy="55" rx="5" ry="2.5" fill="#fca5a5" opacity="0.9" />
+                    <ellipse cx="75" cy="55" rx="5" ry="2.5" fill="#fca5a5" opacity="0.9" />
+                    <!-- Mouth (Default) -->
+                    <path d="M 45 55 Q 50 60 55 55" stroke="#064e3b" stroke-width="2.5" stroke-linecap="round" fill="none" class="mouth" />
+                    
+                    <!-- Tears for crying state -->
+                    <path class="tear" d="M 35 55 Q 35 65 30 65 Q 25 65 25 55 Z" fill="#60a5fa" />
+                    <path class="tear" d="M 65 55 Q 65 65 70 65 Q 75 65 75 55 Z" fill="#60a5fa" />
+                </svg>
+
+                <!-- Equipped Accessory Overlay -->
+                <div id="equipped-layer" class="absolute inset-0 flex justify-center items-center pointer-events-none text-7xl z-20 pb-[50px] drop-shadow-lg">
+                    <!-- Emoji goes here -->
+                </div>
+            </div>
+            
+            <!-- Ground shadow -->
+            <div class="absolute bottom-8 w-48 h-8 bg-emerald-900/40 rounded-[100%] blur-md"></div>
+        </div>
+        
+        <div class="text-center mt-[-10px] relative z-10 px-8">
+            <p class="text-sm font-black text-emerald-900 uppercase tracking-widest drop-shadow-md bg-white/40 inline-block px-4 py-1 rounded-full backdrop-blur-sm border border-white/50">Feed me Eco Photos!</p>
+        </div>
+    </div>
+
+    <!-- === ANALYZING SCREEN === -->
+    <div id="screen-analyzing" class="screen bg-black relative">
+        <img id="preview-image" src="" class="w-full h-full object-cover opacity-50">
+        <div class="absolute inset-0 flex flex-col justify-center items-center">
+            <div class="relative w-64 h-64 border-4 border-emerald-500 rounded-3xl overflow-hidden mb-8 shadow-[0_0_50px_rgba(16,185,129,0.3)] bg-black/40 backdrop-blur-sm">
+                <div class="scan-line"></div>
+                <div class="absolute inset-0 flex justify-center items-center">
+                    <svg class="w-12 h-12 text-emerald-400 z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
+                </div>
+            </div>
+            <h2 class="text-white text-2xl font-black mb-2">Analyzing Material...</h2>
+            <p class="text-emerald-400 text-sm font-bold tracking-wider">Deep Semantic Vision Scan</p>
+        </div>
+    </div>
+
+    <!-- === RESULT REPORT SCREEN === -->
+    <div id="screen-result" class="screen bg-gray-50">
+        <div class="bg-white p-6 pt-10 shadow-sm relative z-10 border-b-4 border-emerald-100">
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex-1 pr-4">
+                    <h2 class="text-2xl font-black text-gray-900 capitalize leading-tight" id="res-title">Item</h2>
+                    <p class="text-sm text-gray-500 mt-1 flex items-center gap-1">
+                        <svg class="w-4 h-4 text-emerald-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+                        Analysis Complete
+                    </p>
+                </div>
+                <div class="bg-emerald-50 border-2 border-emerald-500 rounded-2xl px-4 py-2 text-center min-w-[80px] shadow-sm transform rotate-3">
+                    <span class="block text-xs font-black text-emerald-700 tracking-wider">ECO SCORE</span>
+                    <span class="block text-3xl font-black text-emerald-600"><span id="res-score">10</span></span>
+                </div>
+            </div>
+            <div class="bg-gray-50 rounded-xl p-4 mt-2">
+                <p class="text-xs font-black text-gray-400 uppercase tracking-wider mb-3">AI Detection Report:</p>
+                <div id="materials-list" class="space-y-3"></div>
+            </div>
+        </div>
+
+        <div class="p-6 space-y-4">
+            <h3 class="text-center font-black text-gray-400 uppercase tracking-widest text-xs">Choose Your Action</h3>
+            
+            <button onclick="submitAction('recycle')" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black text-lg py-5 rounded-2xl shadow-xl shadow-emerald-200 active:scale-95 transition-transform flex flex-col items-center gap-1 border-b-4 border-emerald-700 relative overflow-hidden">
+                <div class="absolute inset-0 bg-white/20 transform -skew-x-12 -translate-x-full hover:animate-[shimmer_1s_infinite]"></div>
+                <span>I have eco-recycled this item</span>
+                <span class="text-xs font-bold text-emerald-50 bg-emerald-800/40 px-3 py-1 rounded-full backdrop-blur-sm">+ <span id="reward-xp-display"></span> XP for your Monster</span>
+            </button>
+
+            <button onclick="submitAction('trash')" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-600 font-bold text-sm py-4 rounded-2xl active:scale-95 transition-transform border-b-4 border-gray-300">
+                I threw it into nature
+            </button>
+        </div>
+    </div>
+
+    <!-- === SHOP & BACKPACK SCREEN === -->
+    <div id="screen-shop" class="screen bg-gray-50">
+        <div class="p-6 pt-10 pb-4 bg-white border-b border-gray-100 sticky top-0 z-10">
+            <h1 class="text-2xl font-black text-gray-900">Monster Mall</h1>
+            <div class="flex justify-between items-center mt-2">
+                <p class="text-sm font-bold text-gray-500">Dress up your pet!</p>
+                <div class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-black text-sm flex items-center gap-1 shadow-inner">
+                    XP: <span id="shop-xp-balance">0</span>
+                </div>
+            </div>
+            
+            <!-- Tabs -->
+            <div class="flex bg-gray-100 p-1 rounded-xl mt-4">
+                <button onclick="toggleShopTab('store')" id="tab-store" class="flex-1 py-2 font-black text-sm bg-white rounded-lg shadow-sm text-emerald-700">Store</button>
+                <button onclick="toggleShopTab('backpack')" id="tab-backpack" class="flex-1 py-2 font-bold text-sm text-gray-500">Backpack</button>
+            </div>
+        </div>
+
+        <div class="p-4">
+            <div id="store-view" class="grid grid-cols-2 gap-4">
+                <!-- Injected via JS -->
+            </div>
+            <div id="backpack-view" class="grid grid-cols-2 gap-4 hidden">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- === HISTORY & SETTINGS SCREEN === -->
+    <div id="screen-history" class="screen bg-gray-50">
+        <div class="p-6 pt-10 pb-4 bg-white border-b border-gray-100 sticky top-0 z-10 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-black text-gray-900">Eco Log</h1>
+                <p class="text-sm font-bold text-gray-500">Your recent actions</p>
+            </div>
+            <button onclick="toggleSettings()" class="bg-gray-100 p-3 rounded-full text-gray-600 active:scale-95 hover:bg-gray-200 transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </button>
+        </div>
+
+        <!-- Share Section -->
+        <div class="px-4 mt-4">
+            <button onclick="shareProgress()" class="w-full bg-[#25D366] text-white font-black py-3.5 rounded-xl shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-transform">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></svg>
+                Share to WhatsApp
+            </button>
+        </div>
+
+        <div class="p-4 space-y-4" id="history-list"></div>
+
+        <!-- Settings Modal Inline -->
+        <div id="settings-panel" class="hidden p-6 bg-gray-900 text-white m-4 rounded-3xl mt-4 shadow-2xl border border-gray-700">
+            <h2 class="text-xl font-black mb-4 border-b border-gray-700 pb-3 text-emerald-400">Application Info</h2>
+            <div class="space-y-3 text-sm font-bold">
+                <p class="text-gray-400 flex justify-between"><span>Version:</span> <span class="text-white">1.0.1 PRO</span></p>
+                <div class="h-px bg-gray-800"></div>
+                <p class="text-gray-400">Developer:<br> <span class="text-emerald-400 text-base">LU HONGZHI</span></p>
+                <div class="h-px bg-gray-800"></div>
+                <p class="text-gray-400">Concept provider:<br> <span class="text-emerald-400 text-base">Klima Jason Michael</span></p>
+                <div class="h-px bg-gray-800"></div>
+                <p class="text-gray-400">Institution:<br> <span class="text-white">School of Industrial Technology<br>Universiti Sains Malaysia</span></p>
+                <div class="h-px bg-gray-800"></div>
+                <p class="text-gray-400 flex justify-between mt-2"><span>Core Engine:</span> <span class="text-white">TensorFlow.js Offline</span></p>
+            </div>
+            <button onclick="toggleSettings()" class="mt-6 w-full bg-gray-700 py-3 rounded-xl font-black text-white active:bg-gray-600 transition-colors">Close</button>
+        </div>
+    </div>
+
+    <!-- === PREMIUM SCREEN === -->
+    <div id="screen-premium" class="screen bg-gradient-to-br from-yellow-400 to-yellow-600 text-yellow-900">
+        <button onclick="showScreen('home')" class="absolute top-10 left-6 text-yellow-900 z-20 bg-white/40 p-2 rounded-full backdrop-blur-md hover:bg-white/60">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+        </button>
+        <div class="p-8 pt-24 flex flex-col h-full text-center relative z-10">
+            <div class="bg-white/30 p-6 rounded-full w-32 h-32 mx-auto flex items-center justify-center mb-6 shadow-2xl backdrop-blur-md border border-white/40">
+                <span class="text-6xl drop-shadow-md">👑</span>
+            </div>
+            <h1 class="text-4xl font-black mb-4 drop-shadow-sm">Unlock PRO</h1>
+            <p class="text-lg font-bold mb-8 opacity-90 drop-shadow-sm">Support local eco AI development and get exclusive monster outfits.</p>
+            
+            <div class="bg-white rounded-3xl p-6 shadow-2xl mb-auto border-4 border-yellow-200">
+                <p class="font-black text-yellow-600 mb-2 uppercase text-xs tracking-widest">Contact to upgrade</p>
+                <p class="text-3xl font-black text-gray-900 mb-3">+60 147166200</p>
+                <p class="text-sm font-bold text-gray-500 leading-relaxed">Please contact WhatsApp customer service for PRO version upgrade & exclusive features.</p>
+                <a href="https://wa.me/60147166200" target="_blank" class="block w-full bg-[#25D366] text-white font-black text-lg py-4 rounded-xl mt-6 active:scale-95 transition-transform shadow-lg shadow-green-200 flex justify-center items-center gap-2">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></svg>
+                    Message WhatsApp
                 </a>
             </div>
-            <p>Click to get data</p>
-            <form class="row" id="greet-form">
-                <input id="greet-input" placeholder="Enter a name..." />
-                <button type="submit" id="getdata">GET DATA</button>
-            </form>
-            <div class="functions">
-                <a href="./book.html" target="_self">跳转到book.html</a>
-                <a
-                    href="https://www.baidu.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    >跳到百度blank
-                </a>
-                <a
-                    href="https://www.baidu.com"
-                    target="_self"
-                    rel="noopener noreferrer"
-                >
-                    跳到百度self
-                </a>
-                <button onclick="sayHello()">点击我</button>
-                <button onclick="sayHello()">下载文件</button>
-                <button onclick="sayHello()">上传文件</button>
-                <button onclick="sayHello()">访问相机</button>
-                <button onclick="sayHello()">访问麦克风</button>
-                <button onclick="sayHello()">访问相册</button>
-                <button class="btn" onclick="openWechat()">打开微信</button>
-                <button class="btn" onclick="openWechatScan()">
-                    打开扫一扫
+        </div>
+        <!-- Decorative background dots -->
+        <div class="absolute inset-0 z-0 opacity-20" style="background-image: radial-gradient(#000 2px, transparent 2px); background-size: 30px 30px;"></div>
+    </div>
+
+    <!-- === SCAN ACTION MODAL (POPUP) === -->
+    <div id="scan-modal" class="absolute inset-0 z-[100] flex flex-col justify-end">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="toggleScanModal()"></div>
+        <div id="scan-modal-content" class="bg-white rounded-t-3xl p-6 relative z-10 pb-12 shadow-2xl">
+            <div class="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6"></div>
+            <h3 class="text-center font-black text-xl mb-6 text-gray-800">Log an Eco Item</h3>
+            <div class="flex flex-col gap-4">
+                <button onclick="document.getElementById('cameraInput').click(); toggleScanModal();" class="w-full bg-emerald-500 text-white font-black py-4 rounded-2xl flex justify-center items-center gap-3 shadow-lg shadow-emerald-200 active:scale-95 transition-transform text-lg">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><circle cx="12" cy="13" r="3" stroke="currentColor" stroke-width="2.5"></circle></svg>
+                    Take Photo
                 </button>
-                <button class="btn" onclick="openZhihu()">打开知乎</button>
-                <button onclick="sayHello()">打开抖音</button>
-                <button onclick="sayHello()">用浏览器打开</button>
-                <button>打开知乎</button>
+                <button onclick="document.getElementById('galleryInput').click(); toggleScanModal();" class="w-full bg-gray-50 text-gray-700 font-black py-4 rounded-2xl flex justify-center items-center gap-3 active:scale-95 transition-transform text-lg border-2 border-gray-200 hover:bg-gray-100">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    Choose from Gallery
+                </button>
             </div>
-            <p id="greet-msg"></p>
-            <img src="./static/image/cursor.jpeg" alt="logo" />
-            <video
-                src="https://hk.gh-proxy.org/https://github.com/Sjj1024/PakePlus/blob/main/docs/static/videos/pakeplus.mp4"
-                autoplay
-                controls
-                style="width: 100%; height: 100%"
-            ></video>
-            <audio src="./static/music/yin.mp3" controls></audio>
-        </main>
-    </body>
+            
+            <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleImageUpload(event)">
+            <input type="file" id="galleryInput" accept="image/*" class="hidden" onchange="handleImageUpload(event)">
+        </div>
+    </div>
+
+    <!-- === BOTTOM NAVIGATION === -->
+    <div id="bottom-nav" class="absolute bottom-0 w-full h-[80px] bg-white border-t border-gray-100 flex justify-around items-center px-2 pb-4 pt-2 z-50 shadow-[0_-5px_20px_rgba(0,0,0,0.03)]">
+        <button onclick="showScreen('home')" class="nav-btn active flex flex-col items-center gap-1 flex-1" id="nav-home">
+            <svg class="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+        </button>
+        
+        <button onclick="showScreen('shop')" class="nav-btn flex flex-col items-center gap-1 flex-1" id="nav-shop">
+            <svg class="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+        </button>
+
+        <!-- Big Scan Button -->
+        <div class="relative w-20 flex justify-center -mt-10">
+            <button onclick="toggleScanModal()" class="absolute bg-emerald-500 w-[72px] h-[72px] rounded-full flex items-center justify-center shadow-[0_10px_25px_rgba(16,185,129,0.5)] border-[6px] border-white active:bg-emerald-600 transition-transform hover:scale-105 z-50">
+                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path></svg>
+            </button>
+        </div>
+
+        <button onclick="showScreen('history')" class="nav-btn flex flex-col items-center gap-1 flex-1" id="nav-history">
+            <svg class="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+        </button>
+    </div>
+
+</div>
+
+<script>
+    // --- GLOBAL STATE ---
+    let state = {
+        name: "EcoBuddy",
+        level: 1,
+        xp: 0,
+        reqXp: 10,
+        inventory: [], 
+        equipped: null, 
+        history: []
+    };
+
+    const STORE_ITEMS = [
+        { id: 1, name: "Flower Pin", icon: "🌸", price: 50 },
+        { id: 2, name: "Cool Shades", icon: "🕶️", price: 50 },
+        { id: 3, name: "Crown", icon: "👑", price: 50 },
+        { id: 4, name: "Magic Hat", icon: "🎩", price: 50 },
+        { id: 5, name: "Red Scarf", icon: "🧣", price: 50 },
+        { id: 6, name: "Mushroom", icon: "🍄", price: 50 },
+        { id: 7, name: "Backpack", icon: "🎒", price: 50 },
+        { id: 8, name: "Ribbon", icon: "🎀", price: 50 },
+        { id: 9, name: "Halo", icon: "😇", price: 50 },
+        { id: 10, name: "Headphones", icon: "🎧", price: 50 }
+    ];
+
+    let currentScanScore = 0;
+    let currentScanData = null;
+
+    // Load state
+    function loadState() {
+        const saved = localStorage.getItem('ecoMonsterState');
+        if(saved) state = JSON.parse(saved);
+        updateUI();
+        renderShop();
+    }
+
+    function saveState() {
+        localStorage.setItem('ecoMonsterState', JSON.stringify(state));
+        updateUI();
+    }
+
+    function updateUI() {
+        document.getElementById('ui-monster-name').innerText = state.name;
+        document.getElementById('ui-level').innerText = state.level;
+        document.getElementById('ui-xp-current').innerText = state.xp;
+        document.getElementById('ui-xp-req').innerText = state.reqXp;
+        
+        let pct = (state.xp / state.reqXp) * 100;
+        document.getElementById('ui-xp-bar').style.width = Math.min(pct, 100) + "%";
+        document.getElementById('shop-xp-balance').innerText = state.xp;
+
+        const equipLayer = document.getElementById('equipped-layer');
+        if(state.equipped) {
+            const item = STORE_ITEMS.find(i => i.id === state.equipped);
+            equipLayer.innerText = item ? item.icon : "";
+        } else {
+            equipLayer.innerText = "";
+        }
+    }
+
+    function editName() {
+        const newName = prompt("Give your monster a new name:", state.name);
+        if(newName && newName.trim().length > 0) {
+            state.name = newName.trim().substring(0, 15);
+            saveState();
+        }
+    }
+
+    // --- AI Engine ---
+    let localVisionModel = null;
+    let isModelLoading = true;
+
+    async function loadLocalModel() {
+        try {
+            localVisionModel = await mobilenet.load({ version: 1, alpha: 0.25 });
+            isModelLoading = false;
+            
+            document.querySelector('.ai-loading').classList.add('hidden');
+            const textEl = document.querySelector('.ai-text');
+            textEl.innerText = "Engine Ready";
+            textEl.classList.replace('text-yellow-300', 'text-emerald-300');
+        } catch (error) {
+            document.querySelector('.ai-text').innerText = "Engine Load Failed";
+            document.querySelector('.ai-text').classList.replace('text-yellow-300', 'text-red-400');
+        }
+    }
+    window.addEventListener('DOMContentLoaded', () => {
+        loadState();
+        loadLocalModel();
+        renderHistory();
+    });
+
+    // --- Navigation & Modals ---
+    const screens = ['home', 'analyzing', 'result', 'history', 'premium', 'shop'];
+
+    function showScreen(screenId) {
+        screens.forEach(s => document.getElementById('screen-' + s).classList.remove('active'));
+        document.getElementById('screen-' + screenId).classList.add('active');
+
+        const nav = document.getElementById('bottom-nav');
+        if (['analyzing', 'result', 'premium'].includes(screenId)) {
+            nav.style.display = 'none';
+        } else {
+            nav.style.display = 'flex';
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('active');
+                btn.querySelector('svg').classList.replace('text-emerald-600', 'text-gray-400');
+            });
+            if(['home', 'history', 'shop'].includes(screenId)) {
+                const activeBtn = document.getElementById('nav-' + screenId);
+                activeBtn.classList.add('active');
+                activeBtn.querySelector('svg').classList.replace('text-gray-400', 'text-emerald-600');
+            }
+        }
+        if(screenId === 'shop') renderShop();
+    }
+
+    function toggleScanModal() {
+        if(isModelLoading) {
+            alert("Please wait a moment for the AI Engine to initialize offline...");
+            return;
+        }
+        const m = document.getElementById('scan-modal');
+        m.classList.toggle('active');
+    }
+
+    function toggleSettings() {
+        const p = document.getElementById('settings-panel');
+        p.classList.toggle('hidden');
+    }
+
+    // --- Scanning & Enhanced AI Logic ---
+    function handleImageUpload(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const previewImg = document.getElementById('preview-image');
+                previewImg.onload = () => startLocalAnalysis(previewImg);
+                previewImg.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
+        }
+    }
+
+    async function startLocalAnalysis(imgElement) {
+        showScreen('analyzing');
+        try {
+            const predictions = await localVisionModel.classify(imgElement);
+            setTimeout(() => {
+                const result = processPredictionsEnhanced(predictions);
+                currentScanData = result;
+                currentScanScore = result.numScore; 
+                renderResultScreen(result);
+            }, 1500);
+        } catch (error) {
+            alert("Error analyzing image.");
+            showScreen('home');
+        }
+    }
+
+    // Advanced Regex parsing for more accurate, smarter offline reporting
+    function processPredictionsEnhanced(predictions) {
+        const rawItems = predictions.map(p => p.className.toLowerCase()).join(" ");
+        const primaryItem = predictions[0].className.split(',')[0].trim();
+        
+        let data = { title: primaryItem, numScore: 5, items: [] };
+        const text = rawItems.toLowerCase();
+
+        if (text.match(/bottle|cup|jug|can|plastic|water bottle/)) {
+            data.numScore = 4;
+            data.title = "Beverage / Plastic Container";
+            data.items.push({name: "Synthetic Polymer", icon: "🧪", detail: "Takes 400+ years to decompose in nature."});
+            data.items.push({name: "Recyclable Base", icon: "♻️", detail: "High recyclability if washed properly."});
+        } else if (text.match(/wrapper|packet|bag|box|carton|envelope/)) {
+            data.numScore = 3;
+            data.title = "Packaging Material";
+            data.items.push({name: "Cardboard/Paper", icon: "📦", detail: "Easily recyclable or compostable."});
+            data.items.push({name: "Soft Plastic Liner", icon: "🛍️", detail: "Often non-recyclable. Avoid single use."});
+        } else if (text.match(/fruit|apple|banana|food|orange|lemon|strawberry/)) {
+            data.numScore = 10; 
+            data.title = "Organic Matter";
+            data.items.push({name: "Biodegradable Nature", icon: "🍎", detail: "Turns into rich compost in weeks."});
+            data.items.push({name: "Eco-Friendly", icon: "🌱", detail: "Leaves zero microplastics behind."});
+        } else if (text.match(/computer|laptop|phone|device|mouse|keyboard|screen/)) {
+            data.numScore = 1; 
+            data.title = "Electronic Waste";
+            data.items.push({name: "Toxic Heavy Metals", icon: "⚠️", detail: "Highly toxic to soil and local water."});
+            data.items.push({name: "Valuable Components", icon: "💻", detail: "Contains gold, copper, and lithium."});
+        } else if (text.match(/paper|book|notebook/)) {
+            data.numScore = 7;
+            data.title = "Paper Product";
+            data.items.push({name: "Wood Pulp", icon: "📄", detail: "Highly recyclable material."});
+        } else {
+            // Randomize slightly for unknown objects based on string length to give variety
+            data.numScore = (primaryItem.length % 5) + 4; // Yields 4 to 8
+            data.title = primaryItem;
+            data.items.push({name: "Mixed Composition", icon: "🔍", detail: "Analyze local recycling guidelines."});
+            data.items.push({name: "General Object", icon: "🌍", detail: "Dispose thoughtfully."});
+        }
+        
+        data.numScore = Math.max(1, Math.min(10, data.numScore));
+        return data;
+    }
+
+    function renderResultScreen(data) {
+        document.getElementById('res-title').innerText = data.title;
+        document.getElementById('res-score').innerText = data.numScore;
+        document.getElementById('reward-xp-display').innerText = data.numScore;
+        
+        // Dynamic score color
+        const scoreEl = document.getElementById('res-score');
+        if(data.numScore <= 3) scoreEl.className = 'text-red-500';
+        else if(data.numScore <= 6) scoreEl.className = 'text-yellow-500';
+        else scoreEl.className = 'text-emerald-500';
+
+        const list = document.getElementById('materials-list');
+        list.innerHTML = '';
+        data.items.forEach(i => {
+            list.innerHTML += `
+            <div class="bg-white p-3 rounded-xl border border-gray-100 flex items-start gap-3 shadow-sm">
+                <span class="text-2xl mt-1">${i.icon}</span> 
+                <div>
+                    <h4 class="font-black text-gray-800 text-sm">${i.name}</h4>
+                    <p class="text-xs text-gray-500 font-bold leading-tight mt-0.5">${i.detail}</p>
+                </div>
+            </div>`;
+        });
+        showScreen('result');
+    }
+
+    // --- Post-Report Actions & Advanced Animations ---
+    function submitAction(type) {
+        const actionText = type === 'recycle' ? "Recycled" : "Trashed";
+        state.history.unshift({
+            title: currentScanData.title,
+            action: actionText,
+            xpEarned: type === 'recycle' ? currentScanScore : 0,
+            date: new Date().toLocaleDateString()
+        });
+        if(state.history.length > 20) state.history.pop();
+        
+        showScreen('home');
+
+        if(type === 'recycle') {
+            triggerAnimation('feed', currentScanScore);
+            addXP(currentScanScore);
+        } else {
+            triggerAnimation('cry', 0);
+        }
+        
+        saveState();
+        renderHistory();
+    }
+
+    function triggerAnimation(type, score) {
+        const svgWrapper = document.getElementById('monster-wrapper');
+        if(type === 'feed') {
+            svgWrapper.classList.add('state-feeding');
+            spawnFoodEffect(score);
+            setTimeout(() => svgWrapper.classList.remove('state-feeding'), 2500);
+        } else if (type === 'cry') {
+            svgWrapper.classList.add('state-crying');
+            setTimeout(() => svgWrapper.classList.remove('state-crying'), 3000);
+        }
+    }
+
+    function pokeMonster() {
+        // Random Easter egg interaction
+        triggerAnimation(Math.random() > 0.5 ? 'feed' : 'cry', Math.floor(Math.random()*10)+1); 
+    }
+
+    // Dynamic 1-10 Food particle effects
+    function spawnFoodEffect(score) {
+        const wrapper = document.getElementById('monster-wrapper');
+        
+        // 1-10 Dynamic Food Mapping
+        const foods = {
+            1: { e: "💧", p: "💦" },
+            2: { e: "🍃", p: "🌱" },
+            3: { e: "🍓", p: "💖" },
+            4: { e: "🥕", p: "✨" },
+            5: { e: "🍎", p: "🍎" },
+            6: { e: "🍌", p: "⭐" },
+            7: { e: "🍉", p: "🎊" },
+            8: { e: "🍇", p: "💜" },
+            9: { e: "🍔", p: "🌿" }, // Eco-burger
+            10:{ e: "🌟", p: "🌈" }
+        };
+        
+        const item = foods[score] || foods[5];
+        
+        // Create falling food item
+        const food = document.createElement('div');
+        food.innerText = item.e;
+        food.style.cssText = `
+            position: absolute; left: 50%; top: -80px; margin-left: -24px;
+            font-size: 3rem; z-index: 50;
+            animation: feedDrop 1.2s ease-in-out forwards;
+            filter: drop-shadow(0px 10px 10px rgba(0,0,0,0.2));
+        `;
+        wrapper.appendChild(food);
+
+        // Spawn explosion particles based on score (higher score = more particles)
+        const particleCount = Math.min(score + 3, 12); 
+        for(let i=0; i<particleCount; i++) {
+            setTimeout(() => {
+                const p = document.createElement('div');
+                p.innerText = item.p;
+                const angle = (Math.random() * Math.PI * 2);
+                const dist = 40 + Math.random() * 60;
+                const tx = Math.cos(angle) * dist + 'px';
+                const ty = Math.sin(angle) * dist + 'px';
+                
+                p.style.cssText = `
+                    position: absolute; left: 50%; top: 40px; margin-left: -12px;
+                    font-size: 1.5rem; z-index: 49;
+                    --tx: ${tx}; --ty: ${ty};
+                    animation: explode 0.8s ease-out forwards;
+                `;
+                wrapper.appendChild(p);
+                setTimeout(() => p.remove(), 800);
+            }, 600 + Math.random() * 150); // Trigger right as food enters mouth
+        }
+
+        setTimeout(() => food.remove(), 1200);
+    }
+
+    function addXP(amount) {
+        state.xp += amount;
+        checkLevelUp();
+        saveState();
+    }
+
+    function checkLevelUp() {
+        let leveledUp = false;
+        while(state.xp >= state.reqXp) {
+            state.xp -= state.reqXp;
+            state.level++;
+            state.reqXp *= 2; 
+            leveledUp = true;
+        }
+        if(leveledUp) {
+            setTimeout(() => alert(`🎉 Amazing! ${state.name} leveled up to LV ${state.level}!`), 500);
+        }
+    }
+
+    // --- Shop System ---
+    function toggleShopTab(tab) {
+        if(tab === 'store') {
+            document.getElementById('tab-store').classList.replace('text-gray-500','bg-white');
+            document.getElementById('tab-store').classList.add('shadow-sm', 'text-emerald-700');
+            document.getElementById('tab-backpack').classList.replace('bg-white','text-gray-500');
+            document.getElementById('tab-backpack').classList.remove('shadow-sm', 'text-emerald-700');
+            document.getElementById('store-view').classList.remove('hidden');
+            document.getElementById('backpack-view').classList.add('hidden');
+        } else {
+            document.getElementById('tab-backpack').classList.replace('text-gray-500','bg-white');
+            document.getElementById('tab-backpack').classList.add('shadow-sm', 'text-emerald-700');
+            document.getElementById('tab-store').classList.replace('bg-white','text-gray-500');
+            document.getElementById('tab-store').classList.remove('shadow-sm', 'text-emerald-700');
+            document.getElementById('backpack-view').classList.remove('hidden');
+            document.getElementById('store-view').classList.add('hidden');
+        }
+        renderShop();
+    }
+
+    function renderShop() {
+        const storeDiv = document.getElementById('store-view');
+        const packDiv = document.getElementById('backpack-view');
+        
+        storeDiv.innerHTML = STORE_ITEMS.map(item => {
+            const owned = state.inventory.includes(item.id);
+            return `
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center relative overflow-hidden">
+                <div class="text-4xl mb-2">${item.icon}</div>
+                <h4 class="font-black text-gray-800 text-sm truncate">${item.name}</h4>
+                ${owned 
+                    ? `<button disabled class="mt-3 w-full bg-gray-100 text-gray-400 text-xs font-black py-2 rounded-lg">OWNED</button>`
+                    : `<button onclick="buyItem(${item.id})" class="mt-3 w-full bg-emerald-50 text-emerald-700 text-xs font-black py-2 rounded-lg border border-emerald-200 active:scale-95">50 XP</button>`
+                }
+            </div>`;
+        }).join('');
+
+        if(state.inventory.length === 0) {
+            packDiv.innerHTML = `<div class="col-span-2 text-center text-gray-400 py-10 font-bold">Backpack is empty.</div>`;
+        } else {
+            packDiv.innerHTML = state.inventory.map(id => {
+                const item = STORE_ITEMS.find(i => i.id === id);
+                const isEquipped = state.equipped === id;
+                return `
+                <div class="bg-white p-4 rounded-2xl shadow-sm border ${isEquipped ? 'border-emerald-500 bg-emerald-50' : 'border-gray-100'} text-center">
+                    <div class="text-4xl mb-2">${item.icon}</div>
+                    <h4 class="font-black text-gray-800 text-sm truncate">${item.name}</h4>
+                    <button onclick="${isEquipped ? 'unequip()' : `equip(${item.id})`}" class="mt-3 w-full ${isEquipped ? 'bg-gray-800 text-white' : 'bg-emerald-100 text-emerald-800'} text-xs font-black py-2 rounded-lg active:scale-95 transition-colors">
+                        ${isEquipped ? 'TAKEOFF' : 'WEAR'}
+                    </button>
+                </div>`;
+            }).join('');
+        }
+    }
+
+    function buyItem(id) {
+        if(state.xp >= 50) {
+            state.xp -= 50;
+            state.inventory.push(id);
+            saveState();
+        } else {
+            alert("Not enough XP! Feed your monster more eco items.");
+        }
+    }
+
+    function equip(id) {
+        state.equipped = id;
+        saveState();
+    }
+
+    function unequip() {
+        state.equipped = null;
+        saveState();
+    }
+
+    // --- History & Social ---
+    function renderHistory() {
+        const list = document.getElementById('history-list');
+        if(state.history.length === 0) {
+            list.innerHTML = `<p class="text-center text-gray-400 py-10 font-bold text-sm">No eco logs yet.</p>`;
+            return;
+        }
+        list.innerHTML = state.history.map(h => `
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+                <div>
+                    <h4 class="font-black text-gray-800 capitalize truncate w-40">${h.title}</h4>
+                    <p class="text-xs font-bold ${h.action === 'Recycled' ? 'text-emerald-500' : 'text-gray-400'}">${h.action} - ${h.date}</p>
+                </div>
+                ${h.xpEarned > 0 ? `<div class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-black text-xs">+${h.xpEarned} XP</div>` : ''}
+            </div>
+        `).join('');
+    }
+
+    function shareProgress() {
+        const text = `Look at my EcoBuddy "${state.name}"! It's Level ${state.level} on Eco Scan Monster! I just logged some eco-friendly actions. 🌿📱`;
+        
+        if (navigator.share) {
+            navigator.share({ title: 'Eco Scan Monster', text: text }).catch(console.error);
+        } else {
+            const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+            window.open(url, '_blank');
+        }
+    }
+</script>
+</body>
 </html>
